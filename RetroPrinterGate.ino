@@ -314,8 +314,8 @@ void setup() {
 
 
 /*****************************************************************/
-// メインループ（バッファリング付き）
-void buffered_loop() {
+// メインループ
+void loop() {
   uint8_t octet = 0;
   switch (curr_state) {
     /*--------------------------------------*/
@@ -520,119 +520,6 @@ void buffered_loop() {
             }
           }
         } 
-        PORTB &= 0xF7;
-        led2_dulation = 500;
-        PORTC |= 0x20;
-      }
-      break;
-    /*--------------------------------------*/
-    /* 異常処理 */
-    default:
-      PORTC = 0x10;
-      while (1) {
-        delay(250);
-        PINC = 0x30;
-      }
-  }
-  /*--------------------------------------*/
-  /* LED制御 */
-  if (led1_idle) {
-    led1_idle--;
-  } else {
-    if (led1_dulation) {
-      led1_dulation--;
-      if (!led1_dulation) {
-        PORTC &= 0xE0;
-        led1_idle = 250;
-      }
-    }
-  }
-  if (led2_idle) {
-    led2_idle--;
-  } else {
-    if (led2_dulation) {
-      led2_dulation--;
-      if (!led2_dulation) {
-        PORTC &= 0xE0;
-        led2_idle = 250;
-      }
-    }
-  }
-}
-
-
-
-
-/*****************************************************************/
-// メインループ
-
-void loop() {
-  uint8_t octet = 0;
-  switch (curr_state) {
-    /*--------------------------------------*/
-    /* UART TTLからセントロニクス */
-    case MODE_UART_TO_CENTRO:
-      UARTport.listen();
-      UARTport.write(XOFF);
-      while (UARTport.available()) {
-        octet = UARTport.read();
-        PORTD = ((PORTD & 0x03) | (octet << 2));
-        PORTB = ((PORTB & 0xFC) | (octet >> 2));
-        PORTB |= 0x04;
-        delayMicroseconds(1);
-        PORTB &= 0xFB;
-        while (PORTB & 0x08)
-          ;
-        led1_dulation = 500;
-        PORTC |= 0x10;
-      }
-      UARTport.write(XON);
-      break;
-    /*--------------------------------------*/
-    /* USB Serialからセントロニクス */
-    case MODE_USB_TO_CENTRO:
-      Serial.write(XOFF);
-      while (Serial.available()) {
-        octet = Serial.read();
-        PORTD = ((PORTD & 0x03) | (octet << 2));
-        PORTB = ((PORTB & 0xFC) | (octet >> 2));
-        PORTB |= 0x04;
-        delayMicroseconds(1);
-        PORTB &= 0xFB;
-        while (PORTB & 0x08)
-          ;
-        led1_dulation = 500;
-        PORTC |= 0x10;
-      }
-      Serial.write(XON);
-      break;
-    /*--------------------------------------*/
-    /* セントロニクスからUART TTL */
-    case MODE_CENTRO_TO_UART:
-      if (PORTB & 0x04) {
-        PORTB |= 0x08;
-        while (PORTB & 0x04)
-          ;
-        octet = PORTB;
-        octet <<= 6;
-        octet |= (PORTD >> 2);
-        UARTport.write(octet);
-        PORTB &= 0xF7;
-        led2_dulation = 500;
-        PORTC |= 0x20;
-      }
-      break;
-    /*--------------------------------------*/
-    /* セントロニクスからUSB Serial */
-    case MODE_CENTRO_TO_USB:
-      if (PORTB & 0x04) {
-        PORTB |= 0x08;
-        while (PORTB & 0x04)
-          ;
-        octet = PORTB;
-        octet <<= 6;
-        octet |= (PORTD >> 2);
-        Serial.write(octet);
         PORTB &= 0xF7;
         led2_dulation = 500;
         PORTC |= 0x20;
