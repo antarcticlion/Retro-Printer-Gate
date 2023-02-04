@@ -79,6 +79,63 @@ enum modes {
   MODE_CENTRO_TO_USB,
 };
 
+const uint8_t mode_select[] = {
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_CENTRO_TO_UART,
+  MODE_CENTRO_TO_USB,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_CENTRO_TO_UART,
+  MODE_CENTRO_TO_USB,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_CENTRO_TO_UART,
+  MODE_CENTRO_TO_USB,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_CENTRO_TO_UART,
+  MODE_CENTRO_TO_USB,
+};
+
+const bool usb_select[] = {
+  false,
+  true,
+  false,
+  true,
+  false,
+  true,
+  false,
+  true,
+  false,
+  true,
+  false,
+  true,
+  false,
+  true,
+  false,
+  true,
+};
+
+const uint32_t baudrate_select[] = {
+  BAUDRATE_9600,
+  BAUDRATE_9600,
+  BAUDRATE_9600,
+  BAUDRATE_9600,
+  BAUDRATE_19200,
+  BAUDRATE_19200,
+  BAUDRATE_19200,
+  BAUDRATE_19200,
+  BAUDRATE_57600,
+  BAUDRATE_57600,
+  BAUDRATE_57600,
+  BAUDRATE_57600,
+  BAUDRATE_115200,
+  BAUDRATE_115200,
+  BAUDRATE_115200,
+  BAUDRATE_115200,
+};
+
 SoftwareSerial UARTport(12, 13);
 
 static uint8_t curr_state = MODE_UART_TO_CENTRO;
@@ -88,7 +145,7 @@ static uint8_t curr_flow = XON;
 // LED制御
 
 static uint8_t led1_dulation = 0;
-static int8_t led2_dulation = 0;
+static uint8_t led2_dulation = 0;
 static uint8_t led1_idle = 0;
 static uint8_t led2_idle = 0;
 
@@ -97,7 +154,7 @@ static uint8_t led2_idle = 0;
 // リングバッファ関係
 
 // #define PRINT_BUFF_SIZE 256      // SRAM 1KB
-#define PRINT_BUFF_SIZE 1024        // SRAM 2KB
+#define PRINT_BUFF_SIZE 1536        // SRAM 2KB
 // #define PRINT_BUFF_SIZE 7168     // SRAM 8KB
 // #define PRINT_BUFF_SIZE 92160    // SRAM 96KB
 // #define PRINT_BUFF_SIZE 256000   // SRAM 262KB
@@ -107,33 +164,28 @@ static uint8_t databuf[PRINT_BUFF_SIZE];
 static uint32_t buf_read_index = 0;
 static uint32_t buf_write_index = 0;
 
-enum buf_states {
-  BUF_UNLOCK = 0,
-  BUF_LOCK,
-};
-
-static uint8_t buf_state = 0;
-
 /*****************************************************************/
 // ポート初期化
 
-inline void init_U2C() {
+inline uint8_t init_U2C() {
   DDRB = 0xFE;  // U2C
   DDRD = 0x17;  // U2C
   PORTD = ((PORTD & 0x03) | 0x00);
   PORTB = ((PORTB & 0xFC) | 0x04);
+  return 0;
 }
 
-inline void init_C2U() {
+inline uint8_t init_C2U() {
   DDRB = 0x02;  // C2U
   DDRD = 0x18;  // C2U
   PORTB &= 0xF7;
+  return 0;
 }
 
 /*****************************************************************/
 // リングバッファ関係
 
-uint8_t buf_push(uint8_t cur_data){
+inline uint8_t buf_push(uint8_t cur_data){
   uint32_t tmp_index = buf_write_index;
   tmp_index = (((tmp_index + 1) >= PRINT_BUFF_SIZE) ? 0 : (tmp_index + 1));
   if(buf_read_index == tmp_index){
@@ -144,7 +196,7 @@ uint8_t buf_push(uint8_t cur_data){
   return 0;
 }
 
-uint8_t buf_pop(uint8_t *cur_data){
+inline uint8_t buf_pop(uint8_t *cur_data){
   if(buf_read_index == buf_write_index){
     return -1;
   }
@@ -152,11 +204,11 @@ uint8_t buf_pop(uint8_t *cur_data){
   *cur_data = databuf[buf_read_index];
 }
 
-uint32_t buf_available(){
+inline uint32_t buf_available(){
   return ((PRINT_BUFF_SIZE - buf_read_index - 1) + buf_write_index + 1);
 }
 
-uint8_t buf_isfull(){
+inline uint8_t buf_isfull(){
   return ((buf_available() < (PRINT_BUFF_SIZE - 1)) ? 0 : -1);
 }
 
@@ -164,153 +216,151 @@ uint8_t buf_isfull(){
 // 初期化
 
 void setup() {
+  { //LED off
   DDRC = 0x30;
   PORTC = 0x00;
-
-  for (uint32_t i = 0; i < PRINT_BUFF_SIZE; i++) {
-    databuf[i] = 0;
   }
-  buf_read_index = 0;
-  buf_write_index = 0;
-  curr_flow = XON;
 
-  switch (PINC & 0x0F) {
-    case 0x00:
-      //UART TO CENTRO  9600baud
-      curr_state = MODE_UART_TO_CENTRO;
-      init_U2C();
-      UARTport.begin(BAUDRATE_9600);
-      UARTport.write(XON);
-      break;
+  { //Ring buffer initialize and flow control flag initialize
+    for (uint32_t i = 0; i < PRINT_BUFF_SIZE; i++) {
+      databuf[i] = 0;
+    }
+    buf_read_index = 0;
+    buf_write_index = 0;
+    curr_flow = XON;
+  }
 
-    case 0x01:
-      //USB TO CENTRO  9600baud
-      curr_state = MODE_USB_TO_CENTRO;
-      init_U2C();
-      Serial.begin(BAUDRATE_9600);
+  { // mode selection and port init
+    uint8_t dipsw = PINC & 0x0F;
+    bool usb = usb_select[dipsw];
+    curr_state = mode_select[dipsw];
+  
+    if(curr_state == MODE_UART_TO_CENTRO) init_U2C();
+    if(curr_state == MODE_USB_TO_CENTRO)  init_U2C();
+    if(curr_state == MODE_CENTRO_TO_UART) init_C2U();
+    if(curr_state == MODE_CENTRO_TO_USB)  init_C2U();
+    if(usb){
+      Serial.begin(baudrate_select[dipsw]);
       Serial.write(XON);
-      break;
-
-    case 0x02:
-      //CENTRO TO UART  9600baud
-      curr_state = MODE_CENTRO_TO_UART;
-      init_C2U();
-      UARTport.begin(BAUDRATE_9600);
+    }else{
+      UARTport.begin(baudrate_select[dipsw]);
       UARTport.write(XON);
-      break;
-
-    case 0x03:
-      //CENTRO TO USB  9600baud
-      curr_state = MODE_CENTRO_TO_USB;
-      init_C2U();
-      Serial.begin(BAUDRATE_9600);
-      Serial.write(XON);
-      break;
-
-    case 0x04:
-      //UART TO CENTRO  19200baud
-      curr_state = MODE_UART_TO_CENTRO;
-      init_U2C();
-      UARTport.begin(BAUDRATE_19200);
-      UARTport.write(XON);
-      break;
-
-    case 0x05:
-      //USB TO CENTRO  19200baud
-      curr_state = MODE_USB_TO_CENTRO;
-      init_U2C();
-      Serial.begin(BAUDRATE_19200);
-      Serial.write(XON);
-      break;
-
-    case 0x06:
-      //CENTRO TO UART  19200baud
-      curr_state = MODE_CENTRO_TO_UART;
-      init_C2U();
-      UARTport.begin(BAUDRATE_19200);
-      UARTport.write(XON);
-      break;
-
-    case 0x07:
-      //CENTRO TO USB  19200baud
-      curr_state = MODE_CENTRO_TO_USB;
-      init_C2U();
-      Serial.begin(BAUDRATE_19200);
-      Serial.write(XON);
-      break;
-
-    case 0x08:
-      //UART TO CENTRO  57600baud
-      curr_state = MODE_UART_TO_CENTRO;
-      init_U2C();
-      UARTport.begin(BAUDRATE_57600);
-      UARTport.write(XON);
-      break;
-
-    case 0x09:
-      //USB TO CENTRO  57600baud
-      curr_state = MODE_USB_TO_CENTRO;
-      init_U2C();
-      Serial.begin(BAUDRATE_57600);
-      Serial.write(XON);
-      break;
-
-    case 0x0A:
-      //CENTRO TO UART  57600baud
-      curr_state = MODE_CENTRO_TO_UART;
-      init_C2U();
-      UARTport.begin(BAUDRATE_57600);
-      UARTport.write(XON);
-      break;
-
-    case 0x0B:
-      //CENTRO TO USB  57600baud
-      curr_state = MODE_CENTRO_TO_USB;
-      init_C2U();
-      Serial.begin(BAUDRATE_57600);
-      Serial.write(XON);
-      break;
-
-    case 0x0C:
-      //UART TO CENTRO  115200baud
-      curr_state = MODE_UART_TO_CENTRO;
-      init_U2C();
-      UARTport.begin(BAUDRATE_115200);
-      UARTport.write(XON);
-      break;
-
-    case 0x0D:
-      //USB TO CENTRO  115200baud
-      curr_state = MODE_USB_TO_CENTRO;
-      init_U2C();
-      Serial.begin(BAUDRATE_115200);
-      Serial.write(XON);
-      break;
-
-    case 0x0E:
-      //CENTRO TO UART  115200baud
-      curr_state = MODE_CENTRO_TO_UART;
-      init_C2U();
-      UARTport.begin(BAUDRATE_115200);
-      UARTport.write(XON);
-      break;
-
-    case 0x0F:
-      //CENTRO TO USB  115200baud
-      curr_state = MODE_CENTRO_TO_USB;
-      init_C2U();
-      Serial.begin(BAUDRATE_115200);
-      Serial.write(XON);
-      break;
-
-    default:
-      PORTC = 0x10;
-      while (1) {
-        delay(500);
-        PINC = 0x30;
-      }
+    }
   }
 }
+
+
+/*****************************************************************/
+// データ転送　UART　→　セントロ
+
+inline void octet_handover_uart_to_centro(bool usb){
+  uint8_t octet = 0;
+  if(!usb)UARTport.listen();
+  while(usb ? Serial.available() : UARTport.available()) {
+    if(buf_isfull()){
+      if(curr_flow == XON){
+        (usb ? Serial.write(XOFF) : UARTport.write(XOFF));
+        curr_flow = XOFF;
+      }
+      break;
+    }
+    buf_push(usb ? Serial.read() : UARTport.read());
+    if(buf_isfull()){
+      if(curr_flow == XON){
+        UARTport.write(XOFF);
+        curr_flow = XOFF;
+      }
+      break;
+    }
+  }
+  if(buf_available()){
+    buf_pop(&octet);
+    PORTD = ((PORTD & 0x03) | (octet << 2));
+    PORTB = ((PORTB & 0xFC) | (octet >> 2));
+    PORTB |= 0x04;
+    if(curr_flow == XON){
+      (usb ? Serial.write(XOFF) : UARTport.write(XOFF));
+      curr_flow = XOFF;
+    }
+    delayMicroseconds(1);
+    PORTB &= 0xFB;
+    while (PORTB & 0x08);
+    (usb ? Serial.write(XON) : UARTport.write(XON));
+    curr_flow = XON;
+  }
+  led1_dulation = 500;
+  PORTC |= 0x10;
+}
+
+/*****************************************************************/
+// データ転送　セントロ　→　UART
+
+inline void octet_handover_centro_to_uart(bool usb){
+  uint8_t octet = 0;
+  if (PORTB & 0x04) {     // strobe == H?
+    PORTB |= 0x08;        // busy = H
+    while((!buf_isfull()) && (PORTB & 0x04)){  // buf not full && strobe == L?
+      if(!usb)UARTport.listen();
+      if(buf_available()){
+        if(usb ? Serial.available() : UARTport.available()){
+          octet = (usb ? Serial.read(): UARTport.read());
+          switch(octet){
+          case XON:
+            if(curr_flow == XOFF){
+              (usb ? Serial.write(XON) : UARTport.write(XON));
+              curr_flow = XON;
+            }
+            break;
+          case XOFF:
+            if(curr_flow == XON){
+              (usb ? Serial.write(XOFF) : UARTport.write(XOFF));
+              curr_flow = XOFF;
+            }
+            break;
+          };
+        }
+        if(curr_flow == XON){
+          buf_pop(&octet);
+          (usb ? Serial.write(octet) : UARTport.write(octet));
+        }
+      }
+    }
+    octet = PORTB;
+    octet <<= 6;
+    octet |= (PORTD >> 2);
+    buf_push(octet);
+    while(buf_isfull()){
+      if(!usb)UARTport.listen();
+      if(buf_available()){
+        if(usb ? Serial.available() : UARTport.available()){
+          octet = (usb ? Serial.read() : UARTport.read());
+          switch(octet){
+          case XON:
+            if(curr_flow == XOFF){
+              (usb ? Serial.write(XON) : UARTport.write(XON));
+              curr_flow = XON;
+            }
+            break;
+          case XOFF:
+            if(curr_flow == XON){
+              (usb ? Serial.write(XOFF) : UARTport.write(XOFF));
+              curr_flow = XOFF;
+            }
+            break;
+          };
+        }
+        if(curr_flow == XON){
+          buf_pop(&octet);
+          (usb ? Serial.write(octet) : UARTport.write(octet));
+        }
+      }
+    } 
+    PORTB &= 0xF7;
+    led2_dulation = 500;
+    PORTC |= 0x20;
+  }
+}
+
 
 
 /*****************************************************************/
@@ -321,209 +371,22 @@ void loop() {
     /*--------------------------------------*/
     /* UART TTLからセントロニクス */
     case MODE_UART_TO_CENTRO:
-      UARTport.listen();
-      while (UARTport.available()) {
-        if(buf_isfull()){
-          if(curr_flow == XON){
-            UARTport.write(XOFF);
-            curr_flow = XOFF;
-          }
-          break;
-        }
-        buf_push(UARTport.read());
-        if(buf_isfull()){
-          if(curr_flow == XON){
-            UARTport.write(XOFF);
-            curr_flow = XOFF;
-          }
-          break;
-        }
-      }
-      if(buf_available()){
-        buf_pop(&octet);
-        PORTD = ((PORTD & 0x03) | (octet << 2));
-        PORTB = ((PORTB & 0xFC) | (octet >> 2));
-        PORTB |= 0x04;
-        if(curr_flow == XON){
-          UARTport.write(XOFF);
-          curr_flow = XOFF;
-        }
-        delayMicroseconds(1);
-        PORTB &= 0xFB;
-        while (PORTB & 0x08);
-        UARTport.write(XON);
-        curr_flow = XON;
-      }
-      led1_dulation = 500;
-      PORTC |= 0x10;
+      octet_handover_uart_to_centro(false);
       break;
     /*--------------------------------------*/
     /* USB Serialからセントロニクス */
     case MODE_USB_TO_CENTRO:
-      while (Serial.available()) {
-        if(buf_isfull()){
-          if(curr_flow == XON){
-            Serial.write(XOFF);
-            curr_flow = XOFF;
-          }
-          break;
-        }
-        buf_push(Serial.read());
-        if(buf_isfull()){
-          if(curr_flow == XON){
-            Serial.write(XOFF);
-            curr_flow = XOFF;
-          }
-          break;
-        }
-      }
-      if(buf_available()){
-        buf_pop(&octet);
-        PORTD = ((PORTD & 0x03) | (octet << 2));
-        PORTB = ((PORTB & 0xFC) | (octet >> 2));
-        PORTB |= 0x04;
-        if(curr_flow == XON){
-          Serial.write(XOFF);
-          curr_flow = XOFF;
-        }
-        delayMicroseconds(1);
-        PORTB &= 0xFB;
-        while (PORTB & 0x08);
-        Serial.write(XON);
-        curr_flow = XON;
-      }
-      led1_dulation = 500;
-      PORTC |= 0x10;
+      octet_handover_uart_to_centro(true);
       break;
     /*--------------------------------------*/
     /* セントロニクスからUART TTL */
     case MODE_CENTRO_TO_UART:
-      if (PORTB & 0x04) {     // strobe == H?
-        PORTB |= 0x08;        // busy = H
-        while((!buf_isfull()) && (PORTB & 0x04)){  // buf not full && strobe == L?
-          UARTport.listen();
-          if(buf_available()){
-            if(UARTport.available()){
-              octet = UARTport.read();
-              switch(octet){
-              case XON:
-                if(curr_flow == XOFF){
-                  UARTport.write(XON);
-                  curr_flow = XON;
-                }
-                break;
-              case XOFF:
-                if(curr_flow == XON){
-                  UARTport.write(XOFF);
-                  curr_flow = XOFF;
-                }
-                break;
-              };
-            }
-            if(curr_flow == XON){
-              buf_pop(&octet);
-              UARTport.write(octet);
-            }
-          }
-        }
-        octet = PORTB;
-        octet <<= 6;
-        octet |= (PORTD >> 2);
-        buf_push(octet);
-        while(buf_isfull()){
-          UARTport.listen();
-          if(buf_available()){
-            if(UARTport.available()){
-              octet = UARTport.read();
-              switch(octet){
-              case XON:
-                if(curr_flow == XOFF){
-                  UARTport.write(XON);
-                  curr_flow = XON;
-                }
-                break;
-              case XOFF:
-                if(curr_flow == XON){
-                  UARTport.write(XOFF);
-                  curr_flow = XOFF;
-                }
-                break;
-              };
-            }
-            if(curr_flow == XON){
-              buf_pop(&octet);
-              UARTport.write(octet);
-            }
-          }
-        } 
-        PORTB &= 0xF7;
-        led2_dulation = 500;
-        PORTC |= 0x20;
-      }
+      octet_handover_centro_to_uart(false);
       break;
     /*--------------------------------------*/
     /* セントロニクスからUSB Serial */
     case MODE_CENTRO_TO_USB:
-      if (PORTB & 0x04) {     // strobe == H?
-        PORTB |= 0x08;        // busy = H
-        while((!buf_isfull()) && (PORTB & 0x04)){  // buf not full && strobe == L?
-          if(buf_available()){
-            if(Serial.available()){
-              octet = Serial.read();
-              switch(octet){
-              case XON:
-                if(curr_flow == XOFF){
-                  Serial.write(XON);
-                  curr_flow = XON;
-                }
-                break;
-              case XOFF:
-                if(curr_flow == XON){
-                  Serial.write(XOFF);
-                  curr_flow = XOFF;
-                }
-                break;
-              };
-            }
-            if(curr_flow == XON){
-              buf_pop(&octet);
-              Serial.write(octet);
-            }
-          }
-        }
-        octet = PORTB;
-        octet <<= 6;
-        octet |= (PORTD >> 2);
-        buf_push(octet);
-        while(buf_isfull()){
-          if(buf_available()){
-            if(Serial.available()){
-              octet = Serial.read();
-              switch(octet){
-              case XON:
-                if(curr_flow == XOFF){
-                  Serial.write(XON);
-                  curr_flow = XON;
-                }
-                break;
-              case XOFF:
-                if(curr_flow == XON){
-                  Serial.write(XOFF);
-                  curr_flow = XOFF;
-                }
-                break;
-              };
-            }
-            if(curr_flow == XON){
-              buf_pop(&octet);
-              Serial.write(octet);
-            }
-          }
-        } 
-        PORTB &= 0xF7;
-        led2_dulation = 500;
-        PORTC |= 0x20;
-      }
+      octet_handover_centro_to_uart(true);
       break;
     /*--------------------------------------*/
     /* 異常処理 */
