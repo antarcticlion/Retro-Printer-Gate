@@ -38,14 +38,14 @@ along with this program. If not, see http://www.gnu.org/licenses/.
 //PC1 A1 DIP SW1
 //PC0 A0 DIP SW0
 
-//PD7 D7 PA7
-//PD7 D6 PA6
-//PD7 D5 PA5
-//PD7 D4 PA4
-//PD7 D3 PA3
-//PD7 D2 PA2
-//PD7 D1 PA1
-//PD7 D0 PA0
+//PD7 D7 PA5
+//PD6 D6 PA4
+//PD5 D5 PA3
+//PD4 D4 PA2
+//PD3 D3 PA1
+//PD2 D2 PA0
+//PD1 D1 TX
+//PD0 D0 RX
 
 
 /*****************************************************************/
@@ -153,7 +153,7 @@ static uint8_t led2_idle = 0;
 /*****************************************************************/
 // リングバッファ関係
 
-//#define PRINT_BUFF_SIZE 8        // Debug
+// #define PRINT_BUFF_SIZE 8        // Debug
 // #define PRINT_BUFF_SIZE 256      // SRAM 1KB
 #define PRINT_BUFF_SIZE 1536        // SRAM 2KB
 // #define PRINT_BUFF_SIZE 7168     // SRAM 8KB
@@ -169,16 +169,19 @@ static uint32_t buf_write_index = 0;
 // ポート初期化
 
 inline uint8_t init_U2C() {
-  DDRB = 0xFE;  // U2C
-  DDRD = 0x17;  // U2C
-  PORTD = ((PORTD & 0x03) | 0x00);
-  PORTB = ((PORTB & 0xFC) | 0x04);
+  DDRB = 0x17;  // U2C // Software serial TXD = OUT, STROBE & PA7-6 = OUT
+  DDRD = 0xFE;  // U2C // PA5-0 = OUT, hardware serial TXD = OUT
+//  PORTD &= 0x03;  //Ignore hardware serial /bit7-2 = 0
+  PORTD = 0x00;
+//  ((PORTD & 0x03) | 0x00);
+//  PORTB = ((PORTB & 0xFC) | 0x04);
+  PORTB = 0x04;
   return 0;
 }
 
 inline uint8_t init_C2U() {
-  DDRB = 0x02;  // C2U
   DDRD = 0x18;  // C2U
+  DDRB = 0x02;  // C2U
   PORTD = 0xFF; // all pullup
   PORTB &= 0xF7;
   return 0;
@@ -340,21 +343,26 @@ inline void octet_handover_uart_to_centro(bool usb){
   }
   if(buf_available()){
     buf_pop(&octet);
-    PORTD = ((PORTD & 0x03) | (octet << 2));
-    PORTB = ((PORTB & 0xFC) | (octet >> 6));
-    PORTB |= 0x04;
+    PORTD = ((PIND & 0x03) | (octet << 2));  //PA0-5
+    PORTB = ((PINB & 0xFC) | (octet >> 6));  //PA6-7
+    PORTB &= 0xFB;  //STROBE Assert
     if(curr_flow == XON){
       (usb ? Serial.write(XOFF) : UARTport.write(XOFF));
       curr_flow = XOFF;
     }
-    delayMicroseconds(1);
-    PORTB &= 0xFB;
-    while (PORTB & 0x08);
+    unsigned long timer_dulation = micros();
+    while(timer_dulation == micros()); //wait 1us 
+    PORTB |= 0x04;  //STROBE Negate
+    timer_dulation = micros();
+    while(timer_dulation == micros()); //wait 1us 
+    while (PINB & 0x08){  //wait BUSY Nagate
+      timer_dulation = micros();
+      while(timer_dulation == micros()); //wait 1us 
+    }; 
     (usb ? Serial.write(XON) : UARTport.write(XON));
     curr_flow = XON;
     led1_dulation = 500;
     PORTC |= 0x10;
-    delayMicroseconds(2);
   }
 }
 
