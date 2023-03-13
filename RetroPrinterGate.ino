@@ -21,6 +21,8 @@ along with this program. If not, see http://www.gnu.org/licenses/.
 
 #include <SoftwareSerial.h>
 
+#define DISABLE_CENTRO_TO_UART
+
 /*****************************************************************/
 // gpio pinout description
 
@@ -79,6 +81,26 @@ enum modes {
   MODE_CENTRO_TO_USB,
 };
 
+#ifdef DISABLE_CENTRO_TO_UART
+const uint8_t mode_select[] = {
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+  MODE_UART_TO_CENTRO,
+  MODE_USB_TO_CENTRO,
+};
+#else
 const uint8_t mode_select[] = {
   MODE_UART_TO_CENTRO,
   MODE_USB_TO_CENTRO,
@@ -97,7 +119,7 @@ const uint8_t mode_select[] = {
   MODE_CENTRO_TO_UART,
   MODE_CENTRO_TO_USB,
 };
-
+#endif
 const bool usb_select[] = {
   false,
   true,
@@ -136,7 +158,7 @@ const uint32_t baudrate_select[] = {
   BAUDRATE_115200,
 };
 
-SoftwareSerial UARTport(12, 13);
+SoftwareSerial UARTport(13, 12); //RX = 13, TX = 12
 
 static uint8_t curr_state = MODE_UART_TO_CENTRO;
 static uint8_t curr_flow = XON;
@@ -155,7 +177,7 @@ static uint8_t led2_idle = 0;
 
 // #define PRINT_BUFF_SIZE 8        // Debug
 // #define PRINT_BUFF_SIZE 256      // SRAM 1KB
-#define PRINT_BUFF_SIZE 1536        // SRAM 2KB
+ #define PRINT_BUFF_SIZE 1536        // SRAM 2KB
 // #define PRINT_BUFF_SIZE 7168     // SRAM 8KB
 // #define PRINT_BUFF_SIZE 92160    // SRAM 96KB
 // #define PRINT_BUFF_SIZE 256000   // SRAM 262KB
@@ -171,10 +193,7 @@ static uint32_t buf_write_index = 0;
 inline uint8_t init_U2C() {
   DDRB = 0x17;  // U2C // Software serial TXD = OUT, STROBE & PA7-6 = OUT
   DDRD = 0xFE;  // U2C // PA5-0 = OUT, hardware serial TXD = OUT
-//  PORTD &= 0x03;  //Ignore hardware serial /bit7-2 = 0
   PORTD = 0x00;
-//  ((PORTD & 0x03) | 0x00);
-//  PORTB = ((PORTB & 0xFC) | 0x04);
   PORTB = 0x04;
   return 0;
 }
@@ -199,8 +218,6 @@ inline uint8_t buf_push(uint8_t cur_data){
   }
   buf_write_index = tmp_index;
   databuf[buf_write_index] = cur_data;
-//  Serial.print("Buf push Char : ");
-//  Serial.println(cur_data);
   return 0;
 }
 
@@ -211,8 +228,6 @@ inline uint8_t buf_pop(uint8_t *cur_data){
   ++buf_read_index;
   buf_read_index %= PRINT_BUFF_SIZE;
   *cur_data = databuf[buf_read_index];
-//  Serial.print("Buf pop Char : ");
-//  Serial.println(*cur_data);
 }
 
 inline uint32_t buf_available(){
@@ -361,7 +376,7 @@ inline void octet_handover_uart_to_centro(bool usb){
     }; 
     (usb ? Serial.write(XON) : UARTport.write(XON));
     curr_flow = XON;
-    led1_dulation = 500;
+    led1_dulation = 5000;
     PORTC |= 0x10;
   }
 }
@@ -415,7 +430,7 @@ inline void octet_handover_centro_to_uart(bool usb){
       send_octet_buf_to_uart(usb);
     } 
     PORTB &= 0xF7;
-    led2_dulation = 500;
+    led2_dulation = 5000;
     PORTC |= 0x20;
   }
 }
@@ -463,7 +478,7 @@ void loop() {
       led1_dulation--;
       if (!led1_dulation) {
         PORTC &= 0xE0;
-        led1_idle = 250;
+        led1_idle = 2500;
       }
     }
   }
@@ -474,7 +489,7 @@ void loop() {
       led2_dulation--;
       if (!led2_dulation) {
         PORTC &= 0xE0;
-        led2_idle = 250;
+        led2_idle = 2500;
       }
     }
   }
