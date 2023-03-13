@@ -9,3 +9,12 @@ TTLシリアル→セントロはテスト中です。
 
 ※動作確認のため試験的に公開状態にしています。
 テスト済みの箇所でも、環境によっては動かない場合があるかもしれません。
+
+DIPSW
+1 ON --- OFF USB-SERIAL
+2 ignore
+3 4 ON ON   9600bps
+3 4 ON OFF  19200bps
+3 4 OFF ON  57600bps
+3 4 OFF OFF 115200bps
+
